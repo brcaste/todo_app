@@ -73,15 +73,15 @@ class Task{
   Task({required this.title, this.isDone = false});
 
   //convert Task -> Map (for JSON)
-  Map<String, dynamic> toMap(){
+  Map<String, dynamic> toJson(){
     return {'title': title, 'isDone': isDone};
   }
 
   //convert Map -> Task
-  factory Task.fromMap(Map<String, dynamic> map){
+  factory Task.fromJson(Map<String, dynamic> json){
     return Task(
-      title: map['title'],
-      isDone : map['isDone'],
+      title: json['title'],
+      isDone : json['isDone'],
     );
   }
 }
@@ -101,7 +101,10 @@ class TodoPage extends StatefulWidget {
 }
 
 class _TodoPageState extends State<TodoPage> {
-  final List<Task> _todos = []; // our task list
+  //final List<Task> _todos = []; // our task list
+  final List<Task> _activeTodos = [];
+  final List<Task> _completedTodos = [];
+
   final TextEditingController _controller = TextEditingController();
   int _selectedIndex = 0; //for bottom navigation
   late ConfettiController _confettiController;
@@ -118,9 +121,9 @@ class _TodoPageState extends State<TodoPage> {
     _confettiController.dispose();
     super.dispose();
   }
-  // check if all tasks are complete
+  // confetti logic
   void _checkAllComplete() {
-    if (_todos.isNotEmpty && _todos.every((task) => task.isDone)) {
+    if (_activeTodos.isEmpty && _completedTodos.isNotEmpty) {
       _confettiController.play();
     }
   }
@@ -128,50 +131,81 @@ class _TodoPageState extends State<TodoPage> {
   // save tasks locally
   Future<void> _saveTodos() async {
     final prefs = await SharedPreferences.getInstance();
-    final List<String> taskList =
-        _todos.map((task) => jsonEncode(task.toMap())).toList();
-    await prefs.setStringList('todos', taskList);
+    final List<String> activeJson =
+      _activeTodos.map((task) => jsonEncode(task.toJson())).toList();
+    final List<String> completedJson =
+      _completedTodos.map((task) => jsonEncode(task.toJson())).toList();
+
+    await prefs.setString('activeTodos', jsonEncode(activeJson));
+    await prefs.setString('completedTodos', jsonEncode(completedJson));
   }
 
   // load tasks locally
   Future<void> _loadTodos() async {
     final prefs = await SharedPreferences.getInstance();
-    final List<String>? taskList = prefs.getStringList('todos');
+    final activeString = prefs.getString('activeTodos');
+    final completedString = prefs.getString('completedTodos');
 
-    if(taskList != null){
+
+    if(activeString != null){
+      final List decoded = jsonDecode(activeString);
       setState(() {
-        _todos.clear();
-        _todos.addAll(
-          taskList.map((item) => Task.fromMap(jsonDecode(item))),
-        );
+        _activeTodos.clear();
+        _activeTodos.addAll(decoded.map((e) => Task.fromJson(e)));
       });
     }
+
+    if(completedString != null){
+      final List decoded = jsonDecode(completedString);
+      setState(() {
+        _completedTodos.clear();
+        _completedTodos.addAll(decoded.map((e) => Task.fromJson(e)));
+      });
+    }
+
   }
 
   //add a task
   void _addTodo(){
     if (_controller.text.trim().isEmpty) return;
     setState(() {
-      _todos.add(Task(title: _controller.text.trim()));
+      _activeTodos.add(Task(title: _controller.text.trim()));
       _controller.clear();
     });
     _saveTodos();
-    _checkAllComplete();
+  }
+
+  //edit task
+  void _updateTask(int index, String newTitle) {
+    if (newTitle.trim().isEmpty) return;
+    setState(() {
+      _activeTodos[index].title = newTitle.trim();
+    });
+    _saveTodos();
   }
 
   //remove a task
-  void _removeTodoAt(int index) {
+  void _removeTodoAt(Task task) {
     setState(() {
-      _todos.removeAt(index);
+      _activeTodos.remove(task);
     });
     _saveTodos();
     _checkAllComplete();
   }
 
   // toggle "done" state
-  void _toggleTask(int index){
+  void _toggleTask(Task task){
     setState(() {
-      _todos[index].isDone = !_todos[index].isDone;
+      if(_activeTodos.contains(task)){
+        _activeTodos.remove(task);
+        task.isDone = true;
+        _completedTodos.add(task);
+      }
+      else if (_completedTodos.contains(task)){
+        _completedTodos.remove(task);
+        task.isDone = false;
+        _activeTodos.add(task);
+      }
     });
     _saveTodos();
     _checkAllComplete();
@@ -180,7 +214,7 @@ class _TodoPageState extends State<TodoPage> {
   // Clear completed tasks
   void _clearCompleted() {
     setState(() {
-      _todos.removeWhere((task) => task.isDone);
+      _completedTodos.removeWhere((task) => task.isDone);
     });
     _saveTodos();
   }
@@ -188,11 +222,11 @@ class _TodoPageState extends State<TodoPage> {
   //filtering based on bottom nav
   List<Task> get _filteredTodos {
     if(_selectedIndex == 1) {
-      return _todos.where((t) => !t.isDone).toList(); //Active
+      return _activeTodos; //Active
     } else if(_selectedIndex == 2) {
-      return _todos.where((t) => t.isDone).toList(); // completed
+      return _completedTodos; // completed
     }
-    return _todos;
+    return [..._activeTodos, ..._completedTodos]; //all
   }
 
   // UI
@@ -237,7 +271,7 @@ class _TodoPageState extends State<TodoPage> {
                 child: ListTile(
                   leading: Checkbox(
                       value: task.isDone,
-                      onChanged: (_) => _toggleTask(_todos.indexOf(task)),
+                      onChanged: (_) => _toggleTask(task),
                   ),
                   title: Text(
                     task.title,
@@ -247,10 +281,19 @@ class _TodoPageState extends State<TodoPage> {
                           :TextDecoration.none,
                     ),
                   ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: () =>
-                        _removeTodoAt(_todos.indexOf(task)),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.edit, color: Colors.blue),
+                        onPressed: () => _editTask(context, _activeTodos.indexOf(task)),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: () =>
+                            _removeTodoAt(task),
+                      ),
+                    ],
                   ),
                 ),
               );
@@ -273,6 +316,7 @@ class _TodoPageState extends State<TodoPage> {
           ],
         ),
       ),
+        //confetti
         Align(
           alignment: Alignment.center,
           child: ConfettiWidget(
@@ -285,6 +329,39 @@ class _TodoPageState extends State<TodoPage> {
         ),
       ]
     );
+  }
+
+  //edit task dialog
+  void _editTask(BuildContext context, int index) {
+    final TextEditingController editController =
+        TextEditingController(text: _activeTodos[index].title);
+
+    showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text("Edit Task"),
+          content: TextField(
+            controller: editController,
+            autofocus: true,
+            onSubmitted: (_) {
+              _updateTask(index, editController.text);
+              Navigator.pop(context);
+            },
+          ),
+          actions:[
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+                onPressed: () {
+                  _updateTask(index, editController.text);
+                  Navigator.pop(context);
+                },
+                child: const Text("Save")
+            ),
+          ],
+    ));
   }
 
   // add task dialog
