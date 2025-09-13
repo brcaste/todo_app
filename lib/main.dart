@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert'; //for jsonEncoded/jsonDecode
 import 'package:shared_preferences/shared_preferences.dart';
+
 void main() {
   runApp(const TodoApp());
 }
@@ -13,7 +14,12 @@ class TodoApp extends StatelessWidget{
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'To-do App',
-      theme: ThemeData(primarySwatch: Colors.blue),
+      theme: ThemeData(
+        primarySwatch: Colors.indigo,
+        textTheme: const TextTheme(
+          bodyMedium: TextStyle(fontSize: 18),
+        )
+      ),
       home: const TodoPage(),
     );
   }
@@ -49,7 +55,7 @@ class TodoPage extends StatefulWidget{
 class _TodoPageState extends State<TodoPage> {
   final List<Task> _todos = []; // our task list
   final TextEditingController _controller = TextEditingController();
-
+  int _selectedIndex = 0; //for bottom navigation
   @override
   void initState() {
     super.initState();
@@ -112,6 +118,18 @@ class _TodoPageState extends State<TodoPage> {
     _saveTodos();
   }
 
+  //filtering based on bottom nav
+
+  List<Task> get _filteredTodos {
+    if(_selectedIndex == 1) {
+      return _todos.where((t) => !t.isDone).toList(); //Active
+    } else if(_selectedIndex == 2) {
+      return _todos.where((t) => t.isDone).toList(); // completed
+    }
+    return _todos;
+  }
+
+  // UI
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -125,59 +143,91 @@ class _TodoPageState extends State<TodoPage> {
             ),
           ],
       ),
-      body: Column(
-        children: [
-          // input row
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    decoration: const InputDecoration(
-                      hintText: "Enter a task",
-                      border: OutlineInputBorder(),
-                    ),
+
+     // Task List
+      body: _filteredTodos.isEmpty
+        ? const Center(
+          child: Text(
+            "No tasks yet ✨",
+            style: TextStyle(fontSize: 20, color: Colors.grey),
+          ),
+        )
+      : ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: _filteredTodos.length,
+          itemBuilder: (context, index) {
+            final task = _filteredTodos[index];
+            return Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                leading: Checkbox(
+                    value: task.isDone,
+                    onChanged: (_) => _toggleTask(_todos.indexOf(task)),
+                ),
+                title: Text(
+                  task.title,
+                  style: TextStyle(
+                    decoration: task.isDone
+                        ? TextDecoration.lineThrough
+                        :TextDecoration.none,
+                    color: task.isDone ? Colors.grey : Colors.black,
                   ),
                 ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: _addTodo,
-                  child: const Text("Add"),
-                )
-              ],
-            ),
-          ),
-          // task list
-          Expanded(
-            child: ListView.builder(
-              itemCount: _todos.length,
-              itemBuilder: (context,index) {
-                final task = _todos[index];
-                return ListTile(
-                  leading: Checkbox(
-                    value: task.isDone,
-                    onChanged: (_) => _toggleTask(index),
-                  ),
-                  title: Text(
-                    task.title,
-                    style: TextStyle(
-                      decoration: task.isDone
-                      ? TextDecoration.lineThrough : TextDecoration.none,
-                      color: task.isDone ? Colors.grey : Colors.black,
-                    ),
-                  ),
-                  trailing: IconButton(
-                      onPressed: ()=>_removeTodoAt(index),
-                      icon: const Icon(Icons.delete, color: Colors.red)
-                  ),
-                );
-              }
-            ),
-          ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  onPressed: () =>
+                      _removeTodoAt(_todos.indexOf(task)),
+                ),
+              ),
+            );
+          }
+      ),
+       // Floating action button
+      floatingActionButton: FloatingActionButton(
+          onPressed: ()=> _showAddTaskDialog(context),
+          child: const Icon(Icons.add),
+      ),
+
+      //bottom navigation
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: (index) => setState(()  => _selectedIndex = index ),
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.list), label: "All"),
+          BottomNavigationBarItem(icon: Icon(Icons.work_outline), label: "Active"),
+          BottomNavigationBarItem(icon: Icon(Icons.check_circle),label: "Completed"),
         ],
       ),
+    );
+  }
+
+  // add task dialog
+  void _showAddTaskDialog(BuildContext context) {
+    showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text("New Task"),
+          content: TextField(
+            controller: _controller,
+            decoration: const InputDecoration(hintText: "Enter task"),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _controller.clear();
+              },
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(onPressed: () {
+              _addTodo();
+              Navigator.pop(context);
+            },
+              child: const Text("Add"),
+            ),
+          ],
+        ),
     );
   }
 }
