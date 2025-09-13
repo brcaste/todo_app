@@ -6,24 +6,64 @@ void main() {
   runApp(const TodoApp());
 }
 
-class TodoApp extends StatelessWidget{
+class TodoApp extends StatefulWidget {
   const TodoApp({super.key});
+
+  @override
+  State<TodoApp> createState() => _TodoAppState();
+}
+
+class _TodoAppState extends State<TodoApp> {
+  ThemeMode _themeMode = ThemeMode.light;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTheme();
+  }
+
+  Future<void> _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isDark = prefs.getBool("isDarkMode") ?? false;
+    setState(() {
+      _themeMode = isDark ? ThemeMode.dark : ThemeMode.light;
+    });
+  }
+
+  Future<void> _toggleTheme() async{
+    final prefs = await SharedPreferences.getInstance();
+    final isDark = _themeMode == ThemeMode.dark;
+    await prefs.setBool("isDarkMode", !isDark);
+    setState(() {
+      _themeMode = !isDark ? ThemeMode.dark : ThemeMode.light;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'To-do App',
+      themeMode: _themeMode,
       theme: ThemeData(
         primarySwatch: Colors.indigo,
+        brightness: Brightness.light,
         textTheme: const TextTheme(
           bodyMedium: TextStyle(fontSize: 18),
-        )
+        ),
       ),
-      home: const TodoPage(),
+      darkTheme: ThemeData(
+        primarySwatch: Colors.indigo,
+        brightness: Brightness.dark,
+        textTheme: const TextTheme(
+          bodyMedium: TextStyle(fontSize: 18),
+        ),
+      ),
+      home: TodoPage(onToggleTheme: _toggleTheme, themeMode: _themeMode),
     );
   }
 }
+
 // A Task model (hold text + done state)
 class Task{
   String title;
@@ -44,18 +84,25 @@ class Task{
   }
 }
 
+class TodoPage extends StatefulWidget {
+  final VoidCallback onToggleTheme;
+  final ThemeMode themeMode;
 
-class TodoPage extends StatefulWidget{
-  const TodoPage({super.key});
+  const TodoPage({
+   super.key,
+   required this.onToggleTheme,
+   required this.themeMode
+  });
 
   @override
-  State<StatefulWidget> createState() => _TodoPageState();
+  State<TodoPage> createState() => _TodoPageState();
 }
 
 class _TodoPageState extends State<TodoPage> {
   final List<Task> _todos = []; // our task list
   final TextEditingController _controller = TextEditingController();
   int _selectedIndex = 0; //for bottom navigation
+
   @override
   void initState() {
     super.initState();
@@ -84,6 +131,7 @@ class _TodoPageState extends State<TodoPage> {
       });
     }
   }
+
   //add a task
   void _addTodo(){
     if (_controller.text.trim().isEmpty) return;
@@ -119,7 +167,6 @@ class _TodoPageState extends State<TodoPage> {
   }
 
   //filtering based on bottom nav
-
   List<Task> get _filteredTodos {
     if(_selectedIndex == 1) {
       return _todos.where((t) => !t.isDone).toList(); //Active
@@ -136,6 +183,13 @@ class _TodoPageState extends State<TodoPage> {
       appBar: AppBar(
           title: const Text("My To-Do List"),
           actions: [
+            IconButton(
+                icon: Icon(widget.themeMode == ThemeMode.dark
+                    ? Icons.light_mode
+                    : Icons.dark_mode),
+              tooltip: "Toggle Theme",
+              onPressed: widget.onToggleTheme,
+            ),
             IconButton(
               icon: const Icon(Icons.delete_sweep),
               tooltip: "Clear Completed",
@@ -171,7 +225,6 @@ class _TodoPageState extends State<TodoPage> {
                     decoration: task.isDone
                         ? TextDecoration.lineThrough
                         :TextDecoration.none,
-                    color: task.isDone ? Colors.grey : Colors.black,
                   ),
                 ),
                 trailing: IconButton(
