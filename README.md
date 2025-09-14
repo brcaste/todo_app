@@ -5,7 +5,7 @@ A simple Todo app with:
 - Confetti celebration when all tasks complete
 - Edit, delete, and clear tasks
 
-[View here](https://brcaste.github.io/your_flutter_app/)
+[View here](https://brcaste.github.io/todo_app/)
 
 
 
